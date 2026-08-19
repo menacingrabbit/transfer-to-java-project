@@ -274,7 +274,7 @@ public class OpenRouterClient {
     private String statusHint(int status) {
         return switch (status) {
             case 400 -> "invalid request";
-            case 401 -> "check OPENROUTER_API_KEY";
+            case 401 -> "check your key (OPENROUTER_API_KEY or openrouter.api-key in config/application.yml)";
             case 402 -> "add credits to your OpenRouter account";
             case 403 -> "forbidden / content policy";
             case 404 -> "resource not found";

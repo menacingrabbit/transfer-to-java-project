@@ -131,20 +131,62 @@ uses by default).
    credit card). The amounts for these models are tiny per video.
 
 > Keep the key private. Treat it like a password — never put it in files you share or
-> commit to git.
+> commit to git. You'll paste it into `config/application.yml` in §4 (or set it as an
+> environment variable).
 
 ---
 
 ## 4. Configure the app
 
-Configuration is done with **environment variables**. The app reads them when it starts.
+Spring Boot reads your settings from three places, combined by precedence (1 wins over 2,
+2 over 3):
 
-The only one you really need is the API key; the others have sensible defaults and are
-optional.
+| Precedence | Source | Holds |
+| --- | --- | --- |
+| 1 (highest) | environment variables (`OPENROUTER_*`) | your key and any override |
+| 2 | **`config/application.yml`** next to the app | your key and settings |
+| 3 (defaults) | values packed inside the jar | the table below |
 
-### Minimum configuration — your API key
+The only thing you really need is the API key; every other setting has a sensible default
+and can stay untouched.
 
-Set `OPENROUTER_API_KEY` in your terminal **before** running the app:
+### The recommended way — the `config/application.yml` file
+
+**Step 1 — copy the example template** (the real filename is gitignored, so only the
+example ever reaches the repository):
+
+```powershell
+# Windows (PowerShell)
+Copy-Item config\application-example.yml config\application.yml
+notepad config\application.yml
+```
+
+```bash
+# macOS / Linux
+cp config/application-example.yml config/application.yml
+nano config/application.yml
+```
+
+**Step 2 — paste your key** where the template says:
+
+```yaml
+openrouter:
+  api-key: sk-or-v1-xxxxxxxx     # <-- your REAL key here
+```
+
+That's it. The file is loaded automatically every time the app starts — for the **CLI**
+(`java -jar ... --url ...`) **and** the web server (`java -jar ...`) — no extra flags, no
+rebuild. Settings there override the jar's defaults.
+
+> **Why not a `.env` file?** Spring Boot (unlike the original Python tool) does not read
+> `.env` files. Its idiomatic equivalent is a real `application.yml`; yours lives in
+> `./config/` next to the app (gitignored), and the committed
+> `config/application-example.yml` is the template you copy. Real environment variables
+> still work as an alternative — they simply rank above the file.
+
+### Alternative — environment variables
+
+If you prefer, every setting can be provided as environment variables instead:
 
 **Windows PowerShell** (this works only for the current terminal window):
 ```powershell
@@ -159,31 +201,29 @@ export OPENROUTER_API_KEY="sk-or-v1-xxxxxxxx"
 **Make it permanent (so you don't retype it):**
 
 - **Windows:** `setx OPENROUTER_API_KEY "sk-or-v1-xxxxxxxx"` then open a **new** terminal.
-  (Or go to Start → "environment variables" → edit user variables.)
+  (Or Start → "environment variables" → edit user variables.)
 - **macOS / Linux:** add the `export ...` line to `~/.zshrc` or `~/.bashrc`, then reopen
   the terminal.
 
-> **Why not a `.env` file?** Spring Boot (unlike the original Python tool) does not read
-> a `.env` file automatically. The `.env.example` file in this repo is just a **list of
-> variable names** you can copy-paste from — the actual values belong in real environment
-> variables.
+> ⚠️ **Hygiene tip:** an env var set earlier (e.g. `setx`) still wins over the file. If a
+> stale `OPENROUTER_API_KEY` hides what you typed in `config/application.yml`, unset it —
+> PowerShell: `[Environment]::SetEnvironmentVariable('OPENROUTER_API_KEY', $null, 'User')`,
+> then open a new terminal.
 
-### Optional settings
+### Every setting
 
-These bind to the `openrouter` / `yt` **configuration** — you can leave them all alone.
+Each row can be set either by environment variable or by the config-file key (two spellings
+of the same thing — Spring calls this *relaxed binding*).
 
-| Environment variable | Default | Meaning |
-| --- | --- | --- |
-| `OPENROUTER_TRANSCRIBE_MODEL` | `mistralai/voxtral-mini-transcribe` | the model that transcribes audio |
-| `OPENROUTER_SUMMARISE_MODEL` | `anthropic/claude-3.5-sonnet` | the model that summarises |
-| `OPENROUTER_TIMEOUT_SECONDS` | `60.0` | HTTP timeout for the AI calls (shorter or longer) |
-| `OPENROUTER_MAX_TOKENS` | `1024` | max of the summary in "tokens" |
-| `OPENROUTER_CHUNK_SECONDS` | `590` | chunk size used by `--split` (≈10 min) |
-| `YT_DEFAULT_OUT_DIR` | `output` | where CLI results are written |
-
-If you ever build the app yourself you can instead set the same values in
-`src/main/resources/application.yml` (see the comments there — but never put your API key
-in that file).
+| Environment variable | Config-file key | Default | Meaning |
+| --- | --- | --- | --- |
+| `OPENROUTER_API_KEY` | `openrouter.api-key` | *(none — required for analysis)* | your OpenRouter key |
+| `OPENROUTER_TRANSCRIBE_MODEL` | `openrouter.transcribe-model` | `mistralai/voxtral-mini-transcribe` | the model that transcribes audio |
+| `OPENROUTER_SUMMARISE_MODEL` | `openrouter.summarise-model` | `anthropic/claude-3.5-sonnet` | the model that summarises |
+| `OPENROUTER_TIMEOUT_SECONDS` | `openrouter.timeout-seconds` | `60.0` | HTTP timeout for the AI calls (shorter or longer) |
+| `OPENROUTER_MAX_TOKENS` | `openrouter.max-tokens` | `1024` | max of the summary in "tokens" |
+| `OPENROUTER_CHUNK_SECONDS` | `openrouter.chunk-seconds` | `590` | chunk size used by `--split` (≈10 min) |
+| `YT_DEFAULT_OUT_DIR` | `yt.default-out-dir` | `output` | where CLI results are written |
 
 ---
 
@@ -221,8 +261,8 @@ target/yt-analysis-0.0.1-SNAPSHOT.jar
 java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar --help
 ```
 
-You should be printed the list of options (and — if you did not set `OPENROUTER_API_KEY`
-yet — that's fine, help works without it).
+You should be printed the list of options (and — if you've not configured a key yet, in
+`config/application.yml` or as `OPENROUTER_API_KEY` — that's fine, help works without it).
 
 ### Transcribe & summarise one video
 
@@ -323,7 +363,7 @@ collide and re-running the same video reuses the files (see `--force`).
 | --- | --- |
 | `'java' is not recognized...` or `Error: Could not find or load main class` | Java not on PATH — reinstall JDK 21 and open a new terminal |
 | `'yt-dlp' is not recognized` / `ffprobe not found` | yt-dlp / ffmpeg not on PATH — install them and make sure their folder is on PATH |
-| `Missing required environment variable: OPENROUTER_API_KEY` | No key set — go to §4, set the env var, restart the terminal |
+| `Missing OpenRouter API key. Set 'openrouter.api-key' in config/application.yml or the OPENROUTER_API_KEY environment variable...` | No key configured — go to §4, put your key in `config/application.yml` (or the env var), then restart the terminal |
 | `401 Unauthorized` (transcript fails) | The key is wrong or the key expired — regenerate the key at openrouter.ai/settings/keys |
 | Request takes very long / `Timeout` | Video too long — retry with `--split` |
 | "Video unavailable" | The video is deleted/private/region-blocked — nothing we can do |

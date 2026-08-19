@@ -46,9 +46,13 @@ holders and DTOs.
 
 ## Non-obvious things to know (gotchas that cost real time)
 
-1. **Lazy API key.** `OpenRouterProperties.apiKey()` reads `System.getenv` **only when called**
-   (first actual API call), so `--help` and startup work with no key. Binding is `@ConfigurationProperties`
-   (relaxed binding: `OPENROUTER_API_KEY` → `openrouter.api-key`). Never make it eager.
+1. **API key: bound but still lazy.** `OpenRouterProperties` has an `apiKey` field filled by
+   relaxed binding from EITHER `openrouter.api-key` in the external `config/application.yml`
+   (`config/` is gitignored; `config/application-example.yml` is the committed copy template)
+   OR the `OPENROUTER_API_KEY` env var. It is a non-required field — null when absent — so
+   `--help` and startup work with no key; `apiKey()` only validates on the first actual API
+   call. Never `@NotBlank`-validate it eagerly, and never log the record (`toString()` masks
+   the key).
 2. **`@Retryable` needs concrete types, not the marker interface.** `@Retryable(retryFor=...)`
    and `SimpleRetryPolicy` are typed `Class<? extends Throwable>`, which an **interface**
    reference does not satisfy. `RetryableApiException` is a marker *interface*; so `retryFor`

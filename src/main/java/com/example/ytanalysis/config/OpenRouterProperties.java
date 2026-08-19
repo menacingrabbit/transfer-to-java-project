@@ -17,11 +17,22 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * {@code openrouter} prefix from the annotation is the {@code OPENROUTER_} env family).
  * Kebab-case and snake_case map to camelCase for free.
  *
- * <p><b>Why the API key is NOT a field here: laziness.</b> The Python project deliberately
- * deferred key validation until an API call, so {@code --help} (and startup) work without
- * a key. Spring's {@code @ConfigurationProperties} binding happens at startup — if the key
- * were a required field here, the app would fail to boot without one. So the key lives
- * behind the separate {@link #apiKey()} method, which reads the env var only when called.
+ * <p><b>The API key IS a field now — and that is exactly what makes the external
+ * {@code config/application.yml} useful.</b> Because the environment and the YAML file are
+ * both property sources, relaxed binding fills {@code apiKey} from <em>either</em> an
+ * {@code openrouter.api-key:} line in {@code config/application.yml} <em>or</em> the
+ * {@code OPENROUTER_API_KEY} env var — no code chooses. A missing key simply leaves the
+ * field {@code null}, which keeps startup and {@code --help} working without one (the
+ * Python original's laziness); validation happens only inside {@link #apiKey()}, when a
+ * real API call actually needs the key. Two consequences worth spelling out:
+ *
+ * <ul>
+ *   <li>We deliberately do <b>not</b> default {@code apiKey} in the compact constructor and
+ *       do <b>not</b> annotate it {@code @NotBlank}: both would make a missing key a boot
+ *       error, destroying the lazy behaviour.</li>
+ *   <li>The generated record {@code toString()} would print the secret, so it is overridden
+ *       below to mask the key — never let a key end up in logs or traces.</li>
+ * </ul>
  */
 @ConfigurationProperties(prefix = "openrouter")
 public record OpenRouterProperties(
@@ -29,7 +40,9 @@ public record OpenRouterProperties(
         String summariseModel,
         double timeoutSeconds,
         int maxTokens,
-        int chunkSeconds) {
+        int chunkSeconds,
+        /** The OpenRouter API key. null when configured neither in config/ nor the env. */
+        String apiKey) {
 
     /** The defaults mirror the Python {@code config.py} defaults. */
     public OpenRouterProperties {
@@ -48,26 +61,60 @@ public record OpenRouterProperties(
         if (chunkSeconds <= 0) {
             chunkSeconds = 590;
         }
+        // The ONE field we never default: apiKey may stay null so the app boots and shows
+        // --help without one. We only canonicalise a present-but-blank value to null, so
+        // the getters below can rely on "null or a non-blank key".
+        if (apiKey != null && apiKey.isBlank()) {
+            apiKey = null;
+        }
     }
 
     /**
-     * As documented on the class: returns the API key by reading the environment directly,
-     * <em>but only when called</em> — so the app boots and shows {@code --help} without one.
+     * The API key to actually send, failing loudly only when a call needs it.
      *
-     * @throws IllegalStateException if {@code OPENROUTER_API_KEY} is not set
+     * <p>In normal Spring startup the key arrives in the {@code apiKey} field via relaxed
+     * binding (from either {@code config/application.yml} or {@code OPENROUTER_API_KEY}).
+     * The {@code System.getenv} fallback is a belt-and-braces second chance for anyone who
+     * constructs this record directly (e.g. unit tests) — under Spring it is a no-op.
+     *
+     * @throws IllegalStateException if no key is configured anywhere
      */
     public String apiKey() {
-        String key = System.getenv("OPENROUTER_API_KEY");
+        String key = apiKey;
+        if (key == null) {
+            key = System.getenv("OPENROUTER_API_KEY");   // relaxed binding usually already did this
+        }
         if (key == null || key.isBlank()) {
             throw new IllegalStateException(
-                    "Missing required environment variable: OPENROUTER_API_KEY");
+                    "Missing OpenRouter API key. Set 'openrouter.api-key' in "
+                    + "config/application.yml or the OPENROUTER_API_KEY environment variable. "
+                    + "Startup and --help do not need it; only API calls do.");
         }
         return key;
     }
 
-    /** True if a key is currently available in the environment (used by /api/health). */
+    /**
+     * True if a key is currently available from either source (used by /api/health).
+     * The env check mirrors {@link #apiKey()} but never throws.
+     */
     public boolean isApiKeyConfigured() {
-        String key = System.getenv("OPENROUTER_API_KEY");
-        return key != null && !key.isBlank();
+        return (apiKey != null && !apiKey.isBlank())
+                || System.getenv("OPENROUTER_API_KEY") != null;
+    }
+
+    /**
+     * Mask the secret. The record's auto-generated {@code toString()} would include the raw
+     * {@code apiKey}; if anything logs this bean, the key would leak into the log file.
+     * Never let a secret reach a log, an exception message kept on purpose is different.
+     */
+    @Override
+    public String toString() {
+        String keyMask = isApiKeyConfigured() ? "***configured***" : "null";
+        return "OpenRouterProperties[transcribeModel=" + transcribeModel
+                + ", summariseModel=" + summariseModel
+                + ", timeoutSeconds=" + timeoutSeconds
+                + ", maxTokens=" + maxTokens
+                + ", chunkSeconds=" + chunkSeconds
+                + ", apiKey=" + keyMask + "]";
     }
 }

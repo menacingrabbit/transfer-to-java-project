@@ -7,10 +7,12 @@
 #   application.yml > defaults. Anything you put here is a DEFAULT; every
 #   value can still be overridden by an environment variable or `-D` flag.
 #
-#   Real secrets (the OpenRouter API key) must NEVER be written here. They
-#   live in the OPENROUTER_API_KEY environment variable and are read lazily
-#   by OpenRouterProperties.apiKey(). Look at that property record to see how
-#   conventional "bind at startup" does NOT apply to the key.
+#   Real secrets (the OpenRouter API key) must NEVER be written here. Put the
+#   key in the EXTERNAL config/application.yml next to the jar (copy the
+#   committed config/application-example.yml; that file is gitignored), or in
+#   the OPENROUTER_API_KEY environment variable. OpenRouterProperties binds
+#   either source into its apiKey field but keeps the key lazily validated —
+#   startup and --help work even with no key anywhere.
 
 spring:
   application:
@@ -22,7 +24,10 @@ spring:
 
 # The example configuration values OpenRouterProperties binds. These are the
 # "as defaulted in code" values, shown here only as documentation — they are
-# overridden by the OPENROUTER_* env vars when present.
+# overridden by the OPENROUTER_* env vars or the external config/application.yml.
+#
+# The API key is intentionally NOT here: set openrouter.api-key in the external
+# config/application.yml, or export OPENROUTER_API_KEY (see OpenRouterProperties).
 openrouter:
   transcribe-model: mistralai/voxtral-mini-transcribe
   summarise-model: anthropic/claude-3.5-sonnet

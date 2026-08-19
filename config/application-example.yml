@@ -1,0 +1,42 @@
+# application-example.yml — the template for your LOCAL configuration.
+#
+# HOW TO USE IT (copy, edit, run):
+#
+#   1. Copy this file to config/application.yml  (this 'config/' directory is the same
+#      folder the jar is run from):
+#         PowerShell:  Copy-Item config/application-example.yml config/application.yml
+#         bash/macOS:  cp config/application-example.yml config/application.yml
+#
+#   2. Open config/application.yml and replace the api-key placeholder below with YOUR key.
+#      Never commit that file — it is gitignored on purpose; only this example is tracked.
+#
+#   3. Run the app as usual (java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar ...).
+#
+# WHY THIS WORKS:
+#   Spring Boot automatically loads ./config/application.yml from the directory you run the
+#   app in. This works for BOTH modes — the CLI (java -jar ... --url ...) and the REST
+#   server (java -jar ...) — no extra flags, no spring.config.import needed. Values here
+#   OVERRIDE the default application.yml packed inside the jar.
+#
+# PRECEDENCE (highest wins):
+#   OS environment variables  >  this config/application.yml  >  defaults inside the jar
+#   So if OPENROUTER_API_KEY is still set in your shell, it wins over this file. To let
+#   the file win, unset it first (PowerShell: [Environment]::SetEnvironmentVariable(
+#   'OPENROUTER_API_KEY', $null, 'User') then open a NEW terminal).
+#
+# Note: a blank or missing api-key breaks nothing at startup — the app only needs the key
+# the first time it actually talks to OpenRouter.
+
+# Every OpenRouter setting. Only api-key is required (for real analysis); the rest are
+# the same defaults as in the code and can be left alone or deleted.
+openrouter:
+  api-key: your_openrouter_api_key_here   # <-- REPLACE ME. Never commit a real key.
+  transcribe-model: mistralai/voxtral-mini-transcribe
+  summarise-model: anthropic/claude-3.5-sonnet
+  timeout-seconds: 60.0
+  max-tokens: 1024
+  chunk-seconds: 590
+
+# Pipeline defaults. `yt` is our own prefix; default-out-dir changes where results go.
+yt:
+  default-out-dir: output

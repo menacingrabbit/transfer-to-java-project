@@ -7,8 +7,12 @@ target/
 output/
 
 # ---- Secrets ----
-# Never commit real API keys. OpenRouter reads the env var OPENROUTER_API_KEY,
-# and developers may keep their own copy in a local .env file.
+# Never commit real API keys. The external config/application.yml may hold the
+# real key; only config/application-example.yml (the copy template) is tracked.
+# The app also accepts the OPENROUTER_API_KEY env var; developers may keep their
+# own copy in a local .env file.
+config/application.yml
+!config/application-example.yml
 .env
 .envrc
 *.env
