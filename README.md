@@ -328,7 +328,7 @@ collide and re-running the same video reuses the files (see `--force`).
 | Request takes very long / `Timeout` | Video too long — retry with `--split` |
 | "Video unavailable" | The video is deleted/private/region-blocked — nothing we can do |
 | `mvnw` is not a command (Windows) | Use `.\mvnw.cmd` in PowerShell, not `mvnw` |
-| Version of the API-key error `403` | Content policy / model — for `OPENROUTER_SUMMARISE_MODEL` try another model |
+| `403` from OpenRouter | The key lacks permission for that model, or the model refuses the content — try another model via `OPENROUTER_TRANSCRIBE_MODEL` / `OPENROUTER_SUMMARISE_MODEL` |
 
 ---
 
