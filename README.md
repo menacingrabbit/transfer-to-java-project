@@ -1,224 +1,366 @@
-# yt-analysis-and-summary (Java / Spring Boot)
+# yt-analysis-and-summary — download, transcribe & summarise YouTube videos
 
-A faithful **Java + Spring Boot** port of the Python CLI project in
-[`project-code-python/`](project-code-python/) (which is left untouched as the reference).
+A friendly tool that turns a YouTube video into three things you can actually read:
 
-```text
-YouTube URL → yt-dlp (audio) → ffmpeg (MP3) → [optional split <10 min]
-            → OpenRouter transcription → <stem>_transcript.txt
-            → OpenRouter summarisation  → <stem>_summary.txt
+1. the **audio** as an MP3 file,
+2. the **transcript** (everything that is said, written down),
+3. a bullet-point **summary** of the transcript.
+
+It works from the **command line** (one video or a whole list) and as a **small web
+service** (a REST API). Everything runs on your machine — you only need a free API key
+for the AI step (see below).
+
+```
+YouTube URL → download audio (yt-dlp) → convert to MP3 (ffmpeg)
+           → [optional: split long videos into <10-minute chunks]
+           → transcribe (OpenRouter)      → <name>_transcript.txt
+           → summarise (OpenRouter)      → <name>_summary.txt
 ```
 
-The whole pipeline runs from the **command line** *and* over a simple **REST API** — both
-entry points share the exact same orchestration service.
-
-> This repository is written as an **educational Spring Boot project**. Every class and
-> method carries tutorial-style comments explaining *what* it does, *why* it exists, and
-> *how it maps* back to the original Python code. Read it top to bottom and you will learn
-> Spring (dependency injection, beans, `@ConfigurationProperties`, `RestClient`, AOP/`@Retryable`,
-> `CommandLineRunner`, `@RestControllerAdvice`) by porting a real, working program.
+> **Why Java / Spring Boot?** This project was ported from a Python CLI tool and is
+> deliberately written as an **educational codebase**: every class and method carries
+> tutorial-style comments. Once it runs, it doubles as a hands-on course in Spring Boot.
+> If you just want results, follow this guide — it has everything you need.
 
 ---
 
-## Requirements
+## Contents
 
-- **JDK 21** (LTS). The Maven Wrapper (`mvnw` / `mvnw.cmd`) is included, so **no separate
-  Maven install is needed**.
-- Runtime tools on `PATH` (same as the Python original):
-  - [`yt-dlp`](https://github.com/yt-dlp/yt-dlp)
-  - `ffmpeg` and `ffprobe` (any recent build)
-- An **OpenRouter API key** (environment variable `OPENROUTER_API_KEY`).
+- [Before you start — check your system](#before-you-start--check-your-system)
+- [1. Install Java 21 (the only hard requirement)](#1-install-java-21)
+- [2. Install yt-dlp and ffmpeg](#2-install-yt-dlp-and-ffmpeg)
+- [3. Get an OpenRouter API key](#3-get-an-openrouter-api-key)
+- [4. Configure the app](#4-configure-the-app)
+- [5. Build the project](#5-build-the-project)
+- [6. Run it — command line](#6-run-it--command-line)
+- [7. Run it — as a web service (REST)](#7-run-it--as-a-web-service-rest)
+- [8. What you get — the output files](#8-what-you-get--the-output-files)
+- [9. Common problems & fixes](#9-common-problems--fixes)
+- [10. Run the automated tests](#10-run-the-automated-tests)
+- [11. Learn Spring from this codebase](#11-learn-spring-from-this-codebase)
 
-The API key is read lazily — the app starts and even prints `--help` without one; it is only
-required when the pipeline actually calls OpenRouter.
+---
 
-### Setting the API key
+## Before you start: check your system
 
-Spring Boot does **not** read `.env` files itself; set a real environment variable.
+You need **four things**. Three are installed once; the fourth is an API key.
 
-PowerShell:
+| What | Needed for | Get it | Verify |
+|------|-----------|--------|--------|
+| Java 21 (JDK) | running the app | [Adoptium Temurin](https://adoptium.net/temurin/releases/?version=21) | `java -version` |
+| yt-dlp | downloading video audio | [yt-dlp releases](https://github.com/yt-dlp/yt-dlp/releases) | `yt-dlp --version` |
+| ffmpeg (+ ffprobe) | converting/splitting audio | [gyan.dev FFmpeg builds](https://www.gyan.dev/ffmpeg/builds/) | `ffmpeg -version` |
+| OpenRouter API key | the AI (transcribe/summarise) | [openrouter.ai](https://openrouter.ai) | — |
+
+**Good news:** you do **not** need to install Maven separately — the project ships its own
+wrapper (`mvnw` for Mac/Linux, `mvnw.cmd` for Windows). And you don't need the API key to
+*build* or to see the help text — only to actually transcribe.
+
+---
+
+## 1. Install Java 21+
+
+This project needs **JDK 21** (a Java Development Kit, not just a JRE).
+
+**Where to get it:** the most beginner-friendly installer is **Temurin 21** from
+[adoptium.net](https://adoptium.net/temurin/releases/?version=21) — pick the installer for
+your OS (Windows `.msi` / macOS `.pkg`) and keep the default options. On Linux,
+`sudo apt install openjdk-21-jdk` (Debian/Ubuntu).
+
+Verify it worked — open a terminal and run:
+
+```bash
+java -version
+```
+
+You should see a version line containing `21` (e.g. `openjdk version "21.0.x" ...`).
+If the terminal says "java is not recognized" / "not found", close and reopen the terminal
+(the installer updated your PATH, open terminals have not yet seen it).
+
+> **Windows tip:** during the MSI install, "Add to PATH" is already checked by default.
+> If you have several Javas, the MSI also lets you set `JAVA_HOME` automatically.
+
+---
+
+## 2. Install yt-dlp and ffmpeg
+
+These are the two external tools that do the downloading and audio work. Both must end up
+on your `PATH` (i.e. the command names must work from any folder).
+
+### yt-dlp
+
+Pick whichever matches your comfort level:
+
+| Method | Command |
+|--------|---------|
+| Windows (winget) | `winget install yt-dlp.yt-dlp` |
+| Windows (manual) | download `yt-dlp.exe` from the [releases page](https://github.com/yt-dlp/yt-dlp/releases) and put it in any folder on your PATH |
+| macOS (Homebrew) | `brew install yt-dlp` |
+| Python (any OS) | `pip install yt-dlp` |
+
+### ffmpeg (includes ffprobe)
+
+- **Windows:** download the "release essentials" build from the
+  [gyan.dev page](https://www.gyan.dev/ffmpeg/builds/), unzip it, and add the `bin/`
+  folder inside to your PATH. Or `winget install Gyan.FFmpeg`.
+- **macOS:** `brew install ffmpeg`
+- **Linux:** `sudo apt install ffmpeg` (or your distro's equivalent)
+
+### Verify both
+
+```bash
+yt-dlp --version
+ffmpeg -version
+```
+
+Each should print something rather than "command not found".
+
+---
+
+## 3. Get an OpenRouter API key
+
+The transcript and the summary are generated by an AI model. The app sends your audio to
+**OpenRouter**, a single API giving access to many models (including the ones this project
+uses by default).
+
+1. Sign up (or sign in) at [openrouter.ai](https://openrouter.ai).
+2. Open **Settings → API keys** (`https://openrouter.ai/settings/keys`).
+3. Click **Create Key**, give it any name (e.g. "yt-analysis"), and copy the value. It
+   looks like `sk-or-v1-...`.
+4. OpenRouter is pay-per-use — it spends from the balance on your account (or a prepaid
+   credit card). The amounts for these models are tiny per video.
+
+> Keep the key private. Treat it like a password — never put it in files you share or
+> commit to git.
+
+---
+
+## 4. Configure the app
+
+Configuration is done with **environment variables**. The app reads them when it starts.
+
+The only one you really need is the API key; the others have sensible defaults and are
+optional.
+
+### Minimum configuration — your API key
+
+Set `OPENROUTER_API_KEY` in your terminal **before** running the app:
+
+**Windows PowerShell** (this works only for the current terminal window):
 ```powershell
-$env:OPENROUTER_API_KEY = "sk-or-v1-..."
+$env:OPENROUTER_API_KEY = "sk-or-v1-xxxxxxxx"
 ```
-(cmd: `set OPENROUTER_API_KEY=sk-or-v1-...`, bash: `export OPENROUTER_API_KEY=...`)
+
+**macOS / Linux:**
+```bash
+export OPENROUTER_API_KEY="sk-or-v1-xxxxxxxx"
+```
+
+**Make it permanent (so you don't retype it):**
+
+- **Windows:** `setx OPENROUTER_API_KEY "sk-or-v1-xxxxxxxx"` then open a **new** terminal.
+  (Or go to Start → "environment variables" → edit user variables.)
+- **macOS / Linux:** add the `export ...` line to `~/.zshrc` or `~/.bashrc`, then reopen
+  the terminal.
+
+> **Why not a `.env` file?** Spring Boot (unlike the original Python tool) does not read
+> a `.env` file automatically. The `.env.example` file in this repo is just a **list of
+> variable names** you can copy-paste from — the actual values belong in real environment
+> variables.
+
+### Optional settings
+
+These bind to the `openrouter` / `yt` **configuration** — you can leave them all alone.
+
+| Environment variable | Default | Meaning |
+| --- | --- | --- |
+| `OPENROUTER_TRANSCRIBE_MODEL` | `mistralai/voxtral-mini-transcribe` | the model that transcribes audio |
+| `OPENROUTER_SUMMARISE_MODEL` | `anthropic/claude-3.5-sonnet` | the model that summarises |
+| `OPENROUTER_TIMEOUT_SECONDS` | `60.0` | HTTP timeout for the AI calls (shorter or longer) |
+| `OPENROUTER_MAX_TOKENS` | `1024` | max of the summary in "tokens" |
+| `OPENROUTER_CHUNK_SECONDS` | `590` | chunk size used by `--split` (≈10 min) |
+| `YT_DEFAULT_OUT_DIR` | `output` | where CLI results are written |
+
+If you ever build the app yourself you can instead set the same values in
+`src/main/resources/application.yml` (see the comments there — but never put your API key
+in that file).
 
 ---
 
-## Quick start
+## 5. Build the project
 
-### 1) Build
+The project was built and tested on the included Maven wrapper, in this directory:
 
-```bash
-./mvnw package          # Windows: .\mvnw.cmd package
-```
-This produces an executable (fat) jar at `target/yt-analysis-0.0.1-SNAPSHOT.jar`.
-
-### 2) Run from the command line (CLI mode)
-
-```bash
-java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar --url "https://youtu.be/dQw4w9WgXcQ" --out-dir output
+**Windows (PowerShell):**
+```powershell
+.\mvnw.cmd package
 ```
 
-Options (identical semantics to the Python original):
+**macOS / Linux:**
+```bash
+./mvnw package
+```
+
+The first run downloads the dependencies (needs internet), then compiles and runs the
+tests. When it's done, the app is this single jar file:
+
+```
+target/yt-analysis-0.0.1-SNAPSHOT.jar
+```
+
+> A jar is a Java program wrapped in one file. You don't need to build it every time you
+> run — only when the code changes.
+
+---
+
+## 6. Run it — command line
+
+### Quick sanity check (no key needed)
+
+```bash
+java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar --help
+```
+
+You should be printed the list of options (and — if you did not set `OPENROUTER_API_KEY`
+yet — that's fine, help works without it).
+
+### Transcribe & summarise one video
+
+```bash
+java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar --url "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+```
+
+The pipeline runs: download → MP3 → transcription → summary. When done, the console shows
+where each file was written.
+
+### All command-line options
 
 | Flag | Meaning |
-|------|---------|
-| `--url <url>` | a single YouTube URL (with `--batch-file`, mutually exclusive) |
-| `--batch-file <file>` | a text file with one URL per line (`#` lines are ignored) |
-| `--out-dir <dir>` | output directory (default `output`) |
-| `--no-summary` | skip summarisation (transcript only) |
-| `--force` | re-download even if a matching audio file already exists |
-| `--split` | split long audio into chunks < 10 minutes before transcribing |
-| `--verbose` / `--quiet` | control log verbosity |
-| `--help` | show usage |
+| --- | --- |
+| `--url <url>` | transcribe+summarise one video |
+| `--batch-file <file>` | a text file containing one URL per line (lines starting with `#` are ignored) |
+| `--out-dir <dir>` | output folder (default `output`) |
+| `--no-summary` | transcript only — skip the summary step |
+| `--split` | split the audio into chunks under 10 minutes before transcribing (recommended for long videos) |
+| `--force` | download again even if the MP3 already exists |
+| `--verbose` / `--quiet` | more / less logging |
+| `--help` | show this usage |
 
-If no argument is given, the app starts as a **REST server** instead.
+`--url` and `--batch-file` cannot be used together.
 
-**Resume behaviour:** running the same URL again finds the existing audio and skips the
-download; `--force` forces a fresh download.
+**Resume behaviour:** the app remembers the files (by video ID). Run the same URL again and
+it will **skip** the download and reuse the existing MP3 — add `--force` to change that.
 
-### 3) Run as a REST server (web mode)
+---
 
-```bash
+## 7. Run it — as a web server (REST)
+
+With no command-line arguments, the same jar starts a small web server on
+**http://localhost:8080**.
+
+```powershell
+# make sure the key is set, then:
 java -jar target/yt-analysis-0.0.1-SNAPSHOT.jar
-# or during development:
-./mvnw spring-boot:run
 ```
 
-| Method & path | Purpose |
-|---------------|---------|
-| `GET /api/health` | cheap, offline health probe |
-| `POST /api/analyse` | run the pipeline and return the result as JSON |
+You can now:
 
-Example:
+- **Check it's alive**
+  ```bash
+  curl http://localhost:8080/api/health
+  ```
+  → `{"status":"UP","apiKeyConfigured":false,...}` — the `apiKeyConfigured` flag tells
+  you whether OpenRouter call is possible.
+
+- **Run the pipeline over HTTP**
+  ```bash
+  curl -X POST http://localhost:8080/api/analyse \
+       -H "Content-Type: application/json" \
+       -d '{"url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ","split":true}'
+  ```
+  After a moment the response contains the transcript, the summary, and the file names:
+
+  ```json
+  {
+    "success": true,
+    "videoId": "dQw4w9WgXcQ",
+    "title": "Rick Astley - Never Gonna Give You Up",
+    "transcript": "...the text...",
+    "summary": "...the bullets...",
+    "audioPath": "output/20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ.mp3",
+    "transcriptPath": "output/20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ_transcript.txt",
+    "summaryPath": "output/20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ_summary.txt"
+  }
+  ```
+
+You can also send `"noSummary": true` (transcript only) or `"save": false` (don't write
+files, just return text) in the JSON body.
+
+> **Caution:** one `/analyse` call can take many minutes (that's the AI doing the work).
+> The call is synchronous — plan for a long wait with `curl`, or drive it from a small script.
+
+---
+
+## 8. What you get — the output files
+
+For every video, three files appear in the output folder (default `output/`):
+
+```
+output/
+  20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ.mp3            binary audio
+  20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ_transcript.txt   what was said
+  20260819-rick-astley-never-gonna-give-you-up-dQw4w9WgXcQ_summary.txt      the summary
+```
+
+The file name is built from date + cleaned title + video ID, so two different videos never
+collide and re-running the same video reuses the files (see `--force`).
+
+---
+
+## 9. Common problems & fixes
+
+| Problem | Likely cause / fix |
+| --- | --- |
+| `'java' is not recognized...` or `Error: Could not find or load main class` | Java not on PATH — reinstall JDK 21 and open a new terminal |
+| `'yt-dlp' is not recognized` / `ffprobe not found` | yt-dlp / ffmpeg not on PATH — install them and make sure their folder is on PATH |
+| `Missing required environment variable: OPENROUTER_API_KEY` | No key set — go to §4, set the env var, restart the terminal |
+| `401 Unauthorized` (transcript fails) | The key is wrong or the key expired — regenerate the key at openrouter.ai/settings/keys |
+| Request takes very long / `Timeout` | Video too long — retry with `--split` |
+| "Video unavailable" | The video is deleted/private/region-blocked — nothing we can do |
+| `mvnw` is not a command (Windows) | Use `.\mvnw.cmd` in PowerShell, not `mvnw` |
+| Version of the API-key error `403` | Content policy / model — for `OPENROUTER_SUMMARISE_MODEL` try another model |
+
+---
+
+## 10. Run the automated tests
+
+The project ships with unit + web-slice tests (~40+), all offline (they pretend the
+external tools). To run them:
 
 ```bash
-curl -X POST http://localhost:8080/api/analyse \
-  -H "Content-Type: application/json" \
-  -d '{"url":"https://youtu.be/dQw4w9WgXcQ","split":true}'
+./mvnw test          # macOS/Linux
+.\mvnw.cmd test      # Windows
 ```
-
-```json
-{
-  "success": true,
-  "videoId": "dQw4w9WgXcQ",
-  "title": "Rick Astley - Never Gonna Give You Up",
-  "transcript": "...",
-  "summary": "...",
-  "audioPath": "output/20260819-never-gonna-give-you-up-dQw4w9WgXcQ.mp3",
-  "transcriptPath": "output/..._transcript.txt",
-  "summaryPath": "output/..._summary.txt"
-}
-```
-
-Optional request fields (all default sensibly): `split`, `noSummary`, `force`, `save`
-(write files; default `true`), `outDir`.
-
-> **Synchronous note:** `POST /api/analyse` blocks for the whole run (minutes). That is fine
-> for a tutorial. Production would use `@Async` + a job endpoint (`GET /api/jobs/{id}`);
-> a sketched path is commented in `AnalysisController`.
 
 ---
 
-## Tests
+## 11. Learn Spring from this codebase
 
-```bash
-./mvnw test
-```
+If you read it as a student, start here — it's the intended order:
 
-No network and no subprocesses are required — every external boundary (`CommandRunner`,
-`RestClient`) is mocked. The suite covers filename rules, URL validation, the CLI parser,
-the retry policy, the web layer, and a full-context wiring test.
+1. `YtAnalysisApplication` — the entry point and how CLI-vs-web is decided.
+2. `service/PipelineOrchestrator` — the whole pipeline in one class.
+3. `client/OpenRouterClient` — HTTP + retry (`@Retryable`).
+4. `config/*` — `@ConfigurationProperties`, `RestClient`, AOP/retry config.
+5. `web/*` — a thin REST layer with validation and error handling.
 
----
-
-## Architecture
-
-```
-YtAnalysisApplication  (entry point; chooses CLI vs web mode)
-│
-├── cli.CliRunner          CommandLineRunner — parses args, drives the pipeline
-├── web.AnalysisController RestController — POST /api/analyse + GET /api/health
-│
-└── service.PipelineOrchestrator   ← the ONE pipeline both entry points call
-        │
-        ├── AudioDownloadService   yt-dlp download / resume, ffmpeg → MP3
-        ├── TranscriptionService   optional split + transcribe chunks, cleanup
-        ├── SummarisationService   summarise + save <stem>_summary.txt
-        └── ProgressReporter       log banners
-                │
-                └── client.OpenRouterClient   RestClient + @Retryable (transcribe/summarise)
-```
-
-### Key Spring concepts on display
-
-| Concept | Where |
-|---------|-------|
-| Component scan + `@SpringBootApplication` | `YtAnalysisApplication` |
-| Constructor injection everywhere | every `@Service` / `@RestController` |
-| `@ConfigurationProperties` (relaxed binding) | `config/OpenRouterProperties`, `config/PipelineProperties` |
-| `@Bean` + `RestClient` | `config/RestClientConfig` |
-| AOP `@EnableRetry` + `@Retryable` | `config/RetryConfig`, `client/OpenRouterClient` |
-| Marker interface for retry classification | `client/exception/RetryableApiException` + transient exceptions |
-| `CommandLineRunner` + `ExitCodeGenerator` | `cli/CliRunner` |
-| `@RestControllerAdvice` + `ProblemDetail` | `web/GlobalExceptionMapper` |
-| Jakarta Bean Validation | `web/AnalyseRequest` (`@NotBlank`) |
-| Records as DTOs / data holders | `model/*`, `web/*` |
+Each file explains **what** it does, **why**, and **how it maps to the original Python
+project** (`project-code-python/` stays in the repo as the reference).
 
 ---
 
-## Python → Spring migration map
+## License & credits
 
-| Python (project-code-python) | Java / Spring |
-|------------------------------|---------------|
-| `cli.py::main` | `YtAnalysisApplication.main` |
-| `cli.py::process_single_url` | `service/PipelineOrchestrator.analyse` |
-| `yt/downloader.py` | `service/AudioDownloadService` |
-| `audio/splitter.py` | `service/AudioSplitter`, `service/AudioProbeService` |
-| `transcription/client.py` (`_post`, `@retry`) | `client/OpenRouterClient` (`postJson`, `@Retryable`) |
-| `transcribe_split` | `service/TranscriptionService` |
-| `summariser.py` | `service/SummarisationService` |
-| `utils/retry.py` (tenacity) | `@Retryable` + `RetryConfig` (and `RetryTemplate`) |
-| `config.py` | `config/OpenRouterProperties`, `config/PipelineProperties` |
-| `httpx.post` | `RestClient` (synchronous, Java 6.1+) |
-| `shutil.which` | `util/ExecutableFinder` |
-| `subprocess.run(check=True)` | `util/CommandRunner` (wraps `ProcessBuilder`) |
-| `argparse` | `cli/CliArgumentParser` (hand-rolled for teaching) |
-| `validate_youtube_url` + regex | `util/YoutubeUrlValidator` |
-| `slugify` / `clean_title` | `util/SlugUtil` |
-
----
-
-## Retry policy
-
-Mirrors the Python `tenacity` decorator (`attempts=3`, exponential backoff). **Only the two
-leaf API methods** (`transcribe`, `summarise`) are `@Retryable` — orchestration is not, so a
-late failure never re-splits or re-transcribes chunks that already succeeded.
-
-- **Transient** failures (HTTP 408/429/500/502/503/504, network errors) → retried up to
-  3 times with backoff 1s → 2s → 4s (capped at 10s).
-- **Permanent** failures (bad request, bad key, content policy, …) → failed immediately,
-  never retried.
-
-Classification is done via the `RetryableApiException` marker interface: transient exceptions
-implement it, permanent ones deliberately do not.
-
----
-
-## Project layout
-
-```
-src/main/java/com/example/ytanalysis/
-  YtAnalysisApplication.java     entry point / CLI-vs-web switch
-  config/   properties, RestClient, retry wiring
-  model/    records (VideoInfo, AnalysisResult, PipelineOptions, ...)
-  util/     SlugUtil, YoutubeUrlValidator, FileNameUtil, CommandRunner, ExecutableFinder
-  client/   OpenRouterClient + exception hierarchy + JSON records
-  service/  download, split, transcribe, summarise, orchestration
-  cli/      argument parser + CLI runner
-  web/      controller, request/response records, exception mapper
-src/test/java/...               JUnit 5 unit + web-slice + integration tests
-```
-
-The original Python codebase lives in [`project-code-python/`](project-code-python/) as the
-line-by-line reference for the port.
+This is a study/derivative of a Python project by the same author, ported to Java. External
+pieces: [yt-dlp](https://github.com/yt-dlp/yt-dlp), FFmpeg, Spring Boot, and
+[OpenRouter](https://openrouter.ai).
