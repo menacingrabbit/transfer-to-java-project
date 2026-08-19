@@ -1,0 +1,169 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    pom.xml — the Maven "recipe" for this project.
+
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │ WHAT THIS FILE IS                                                       │
+    │                                                                          │
+    │ Maven is a build tool. This file is its configuration: it lists every   │
+    │ third-party library ("dependency") the project compiles and runs        │
+    │ against, the Java version we target, and how to package the result.     │
+    │                                                                          │
+    │ Because the original Python project used `pip install -r requirements`  │
+    │ for dependencies, you can read this file as the Java equivalent of      │
+    │ `requirements.txt` — but richer, because Maven also resolves           │
+    │ transitive dependencies (the libraries your libraries need).            │
+    │                                                                          │
+    │ WHY WE PORTED THIS TO SPRING BOOT                                       │
+    │                                                                          │
+    │ Spring Boot is a "batteries-included" framework on top of Spring. A     │
+    │ single class annotated @SpringBootApplication gives you:                 │
+    │   • dependency injection (the "IoC/DI" core of Spring)                  │
+    │   • an embedded web server (Tomcat) for the REST API                      │
+    │   • JSON (de)serialisation via Jackson                                   │
+    │   • configuration binding (@ConfigurationProperties)                      │
+    │   • retry support (Spring Retry) and much more.                         │
+    │ This one pom.xml is the whole scaffolding for that.                     │
+    └────────────────────────────────────────────────────────────────────────┘
+-->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             https://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        parent (the "parent POM"):
+        Instead of listing Spring Boot's ~40 internal versions by hand, we
+        inherit from `spring-boot-starter-parent`. It centralises which
+        Spring/Jackson/JUnit/Mockito/... versions work together as one tested
+        set. This is the one true "Spring Boot version" you usually change.
+
+        We use the 3.5.x line (the last 3.x, most-documented for learners).
+        Spring Boot 4.x exists but keeps the same concepts; the 3.5 series is
+        the broadest tutorial baseline as of writing.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.5.16</version>
+    </parent>
+
+    <!-- identity of THIS maven artifact (the built project) -->
+    <groupId>com.example</groupId>
+    <artifactId>yt-analysis</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>yt-analysis</name>
+    <description>
+        Educational Spring Boot port of the Python "yt-analysis-and-summary"
+        project. Downloads YouTube audio and transcribes + summarises it via
+        OpenRouter.
+    </description>
+
+    <!--
+        properties block: `<java.version>` is read by the Maven compiler
+        plugins to pick the bytecode/source level. We target the current LTS:
+        Java 21. (Spring Boot 3.x needs 17+; 21 is the modern default.)
+    -->
+    <properties>
+        <java.version>21</java.version>
+    </properties>
+
+    <dependencies>
+        <!--
+            spring-boot-starter-web
+            Adds the embedded Tomcat web server + Spring MVC + Jackson JSON.
+            This is what lets the app expose a REST API. (In the Python
+            original there was no web server — we add one because you chose
+            "CLI + REST".)
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!--
+            spring-boot-starter-json
+            Pulls in Jackson (ObjectMapper). It is actually ALREADY included
+            transitively by `starter-web`, but we list it explicitly so you
+            see Jackson as a first-class concept: it is the library that turns
+            our Java records into JSON (for OpenRouter + the REST responses)
+            and JSON back into records.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-json</artifactId>
+        </dependency>
+
+        <!--
+            spring-boot-starter-validation
+            Adds Jakarta Validation (the `jakarta.validation` package). We use
+            its annotations (@NotBlank, @Size ...) to validate the REST
+            request body and reject bad input early — the Java mirror of the
+            Python `validate_youtube_url` guard.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!--
+            spring-boot-starter-aop  +  spring-retry
+            These two are the Java answer to the Python `tenacity` library
+            that retried transient OpenRouter failures. Spring Retry uses
+            Aspect-Oriented-Programming (AOP) to wrap a method with a proxy
+            that retries it. Annotation @EnableRetry/@Retryable come from
+            spring-retry; `starter-aop` supplies the AOP runtime they rely on.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.retry</groupId>
+            <artifactId>spring-retry</artifactId>
+        </dependency>
+
+        <!--
+            spring-boot-starter-test
+            The whole test stack: JUnit 5 (Jupiter), Mockito, AssertJ,
+            MockMvc, and MockRestServiceServer (to stub the OpenRouter HTTP
+            calls in unit tests). Test-scoped — never shipped in the jar.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            DELIBERATELY OMITTED: spring-boot-starter-webflux / WebClient.
+            Java's Python-equivalent for HTTP calls here is the synchronous
+            RestClient. A WebClient uses reactive types (Mono/Flux) that make
+            a simple linear pipeline harder to read. When (and only when) you
+            need true streaming/backpressure, WebClient is the upgrade; the
+            comments in OpenRouterClient show the swap.
+        -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                spring-boot-maven-plugin. Two jobs:
+                 * `mvn spring-boot:run` — build + run the app in one command.
+                 * the `repackage` goal — swaps the plain jar (containing only our classes,
+                   a "thin" jar) for an executable "fat" jar that bundles every dependency
+                   and a Spring Boot launcher, so `java -jar` works. Without this explicit
+                   declaration the plain jar is produced and `java -jar` fails with
+                   "no main manifest attribute" — a classic gotcha worth calling out.
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

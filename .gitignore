@@ -1,0 +1,29 @@
+# ---- Build output (Maven) ----
+target/
+**/target/
+
+# ---- Runtime output ----
+# The app writes analysis artifacts (mp3/transcript/summary) here.
+output/
+
+# ---- Secrets ----
+# Never commit real API keys. OpenRouter reads the env var OPENROUTER_API_KEY,
+# and developers may keep their own copy in a local .env file.
+.env
+.envrc
+*.env
+
+# ---- IDE / OS noise ----
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# ---- Claude Code session data ----
+.claude/worktrees/
+
+# Local Claude settings may hold API keys / machine-specific routing —
+# never commit them.
+.claude/settings.json
+.claude/settings.local.json

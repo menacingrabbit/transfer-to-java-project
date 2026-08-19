@@ -1,0 +1,41 @@
+# application.yml — Spring Boot's central configuration file.
+#
+# WHAT THIS IS:
+#   The Python original read its settings from environment variables via
+#   `os.getenv` inside src/config.py. Spring Boot binds configuration the
+#   same way, but through a hierarchy: command-line args > env vars >
+#   application.yml > defaults. Anything you put here is a DEFAULT; every
+#   value can still be overridden by an environment variable or `-D` flag.
+#
+#   Real secrets (the OpenRouter API key) must NEVER be written here. They
+#   live in the OPENROUTER_API_KEY environment variable and are read lazily
+#   by OpenRouterProperties.apiKey(). Look at that property record to see how
+#   conventional "bind at startup" does NOT apply to the key.
+
+spring:
+  application:
+    name: yt-analysis   # shown in logs and used as the default context id
+
+  # If you ever want to talk to OpenRouter through a proxy, uncomment:
+  # restclient:
+  #   ...(not a real starter property; see RestClientConfig for timeouts)
+
+# The example configuration values OpenRouterProperties binds. These are the
+# "as defaulted in code" values, shown here only as documentation — they are
+# overridden by the OPENROUTER_* env vars when present.
+openrouter:
+  transcribe-model: mistralai/voxtral-mini-transcribe
+  summarise-model: anthropic/claude-3.5-sonnet
+  timeout-seconds: 60.0
+  max-tokens: 1024
+  chunk-seconds: 590
+
+# Pipeline defaults. `yt` is our own prefix (Spring allows any prefix).
+yt:
+  default-out-dir: output
+
+# Logging level for our own classes. --verbose / --quiet on the CLI flip the
+# ROOT logger at runtime; this only sets the baseline.
+logging:
+  level:
+    com.example.ytanalysis: INFO

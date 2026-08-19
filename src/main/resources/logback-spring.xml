@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    logback-spring.xml — how our log lines are formatted and printed.
+
+    The Python original used the `rich` library for colourful console output
+    and `tqdm` for progress bars. In Spring Boot the logging is done by
+    SLF4J + Logback (already inside starter-web). This file only makes that
+    output a little friendlier:
+
+      * one log line per message, with a readable timestamp,
+      * ANSI colours when running in a proper terminal,
+      * our own "*": INFO lines for progress (see ProgressReporter).
+
+    You usually don't need to touch this. It exists here to show you where
+    log *formatting* lives, separate from the code that writes logs.
+-->
+<configuration>
+    <!--
+        ConsoleAppender writes to standard out. The pattern is the recipe for
+        each line: %d{...} time, %-5level INFO/DEBUG..., %logger{36} origin
+        class, %m the message, %n a newline. %highlight(...) colours the line
+        and stops colouring when output is redirected to a file.
+    -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %highlight(%-5level) [%16.30logger{0}] %m%n</pattern>
+        </encoder>
+    </appender>
+
+    <!-- The separate logger we use for "user-facing" pipeline progress. -->
+    <logger name="com.example.ytanalysis.ProgressReporter" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+    </logger>
+
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>
