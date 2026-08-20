@@ -56,7 +56,7 @@ public record OpenRouterProperties(
             timeoutSeconds = 60.0;
         }
         if (maxTokens <= 0) {
-            maxTokens = 1024;
+            maxTokens = 4096;
         }
         if (chunkSeconds <= 0) {
             chunkSeconds = 590;

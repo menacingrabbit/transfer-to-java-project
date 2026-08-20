@@ -32,7 +32,7 @@ openrouter:
   transcribe-model: mistralai/voxtral-mini-transcribe
   summarise-model: anthropic/claude-3.5-sonnet
   timeout-seconds: 60.0
-  max-tokens: 1024
+  max-tokens: 4096
   chunk-seconds: 590
 
 # Pipeline defaults. `yt` is our own prefix (Spring allows any prefix).
